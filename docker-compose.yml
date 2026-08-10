@@ -1,0 +1,45 @@
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: edupath
+      POSTGRES_PASSWORD: edupath
+      POSTGRES_DB: edupath
+    ports:
+      - "5432:5432"
+    volumes:
+      - edupath_pg:/var/lib/postgresql/data
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    environment:
+      DATABASE_URL: postgresql+psycopg://edupath:edupath@db:5432/edupath
+      DEMO_MODE: "true"
+      SECRET_KEY: docker-dev-secret
+      CORS_ORIGINS: http://localhost:3000
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_MODEL: ${LLM_MODEL:-gpt-4o-mini}
+      LLM_BASE_URL: ${LLM_BASE_URL:-}
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data:ro
+      - ./uploads:/app/uploads
+    depends_on:
+      - db
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8000
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+
+volumes:
+  edupath_pg:

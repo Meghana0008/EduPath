@@ -1,0 +1,98 @@
+[
+  {
+    "name": "National Scholarship Portal (NSP)",
+    "url": "https://scholarships.gov.in/",
+    "type": "government",
+    "country": "IN",
+    "enabled": true,
+    "notes": "Official Government of India one-stop scholarship portal."
+  },
+  {
+    "name": "UGC Scholarships & Fellowships",
+    "url": "https://www.ugc.gov.in/",
+    "type": "government",
+    "country": "IN",
+    "enabled": true,
+    "notes": "University Grants Commission official site."
+  },
+  {
+    "name": "AICTE Student Development Schemes",
+    "url": "https://www.aicte-india.org/schemes/students-development-schemes",
+    "type": "government",
+    "country": "IN",
+    "enabled": true,
+    "notes": "Official AICTE student schemes including Pragati and Saksham."
+  },
+  {
+    "name": "INSPIRE / DST Online Portal",
+    "url": "https://www.online-inspire.gov.in/",
+    "type": "research",
+    "country": "IN",
+    "enabled": true,
+    "notes": "Official DST INSPIRE scholarship and fellowship applications."
+  },
+  {
+    "name": "Prime Minister's Research Fellowship (PMRF)",
+    "url": "https://www.pmrf.in/",
+    "type": "research",
+    "country": "IN",
+    "enabled": true,
+    "notes": "Official PMRF portal for PhD research fellowships."
+  },
+  {
+    "name": "CSIR Human Resource Development Group",
+    "url": "https://csirhrdg.res.in/",
+    "type": "research",
+    "country": "IN",
+    "enabled": true,
+    "notes": "Official CSIR fellowships and research funding information."
+  },
+  {
+    "name": "USIEF Fulbright-Nehru",
+    "url": "https://www.usief.org.in/",
+    "type": "international",
+    "country": "IN",
+    "enabled": true,
+    "notes": "Official United States-India Educational Foundation site."
+  },
+  {
+    "name": "Reliance Foundation Education",
+    "url": "https://www.reliancefoundation.org/education",
+    "type": "foundation",
+    "country": "IN",
+    "enabled": true,
+    "notes": "Official Reliance Foundation education programmes."
+  },
+  {
+    "name": "Tata Trusts Individual Grants",
+    "url": "https://www.tatatrusts.org/our-work/individual-grants-programmes",
+    "type": "foundation",
+    "country": "IN",
+    "enabled": true,
+    "notes": "Official Tata Trusts grants programmes page."
+  },
+  {
+    "name": "JN Tata Endowment",
+    "url": "https://jntataendowment.org/",
+    "type": "foundation",
+    "country": "IN",
+    "enabled": true,
+    "notes": "Official JN Tata Endowment for higher education of Indians."
+  },
+  {
+    "name": "Inlaks Shivdasani Foundation",
+    "url": "https://www.inlaksfoundation.org/",
+    "type": "foundation",
+    "country": "IN",
+    "enabled": true,
+    "notes": "Official Inlaks scholarships for Indian students."
+  },
+  {
+    "name": "Chevening Scholarships",
+    "url": "https://www.chevening.org/apply/",
+    "type": "international",
+    "country": "IN",
+    "enabled": true,
+    "notes": "Official UK Chevening application portal (open to eligible Indian citizens)."
+  }
+]
