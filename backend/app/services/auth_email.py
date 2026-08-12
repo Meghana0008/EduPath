@@ -4,9 +4,11 @@ import logging
 import random
 import secrets
 import smtplib
+import ssl
 from datetime import datetime, timedelta, timezone
 from email.message import EmailMessage
 from typing import Optional
+from urllib import error, request
 
 from sqlalchemy.orm import Session
 
@@ -22,40 +24,87 @@ def _generate_code() -> str:
     return f"{random.SystemRandom().randint(0, 999999):06d}"
 
 
-def _smtp_configured() -> bool:
+def email_delivery_configured() -> bool:
+    get_settings.cache_clear()
     settings = get_settings()
-    return bool(settings.smtp_host and settings.smtp_from)
+    if settings.resend_api_key:
+        return True
+    return bool(settings.smtp_host and settings.smtp_username and settings.smtp_password)
 
 
 def send_login_code_email(to_email: str, code: str) -> bool:
-    """Send confirmation code. Returns True if SMTP delivered."""
+    """Send confirmation code via Resend API or SMTP. Returns True if delivered."""
+    get_settings.cache_clear()
     settings = get_settings()
-    if not _smtp_configured():
-        logger.info("SMTP not configured — login code for %s is %s", to_email, code)
-        return False
-
-    msg = EmailMessage()
-    msg["Subject"] = f"{code} is your EduPath confirmation code"
-    msg["From"] = settings.smtp_from
-    msg["To"] = to_email
-    msg.set_content(
+    subject = f"{code} is your EduPath confirmation code"
+    body = (
         f"Your EduPath AI confirmation code is: {code}\n\n"
         f"It expires in {settings.auth_code_ttl_minutes} minutes.\n"
         "If you did not request this, you can ignore this email.\n"
     )
 
+    if settings.resend_api_key:
+        return _send_via_resend(to_email, subject, body)
+
+    if not (settings.smtp_host and settings.smtp_username and settings.smtp_password):
+        logger.warning("Email delivery not configured (set RESEND_API_KEY or SMTP_* in .env)")
+        return False
+
+    msg = EmailMessage()
+    msg["Subject"] = subject
+    msg["From"] = settings.smtp_from or settings.smtp_username
+    msg["To"] = to_email
+    msg.set_content(body)
+
     try:
-        with smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=20) as server:
-            if settings.smtp_use_tls:
-                server.starttls()
-            if settings.smtp_username:
+        if settings.smtp_use_ssl or int(settings.smtp_port) == 465:
+            context = ssl.create_default_context()
+            with smtplib.SMTP_SSL(settings.smtp_host, settings.smtp_port, timeout=30, context=context) as server:
                 server.login(settings.smtp_username, settings.smtp_password)
-            server.send_message(msg)
-        logger.info("Sent login code email to %s", to_email)
+                server.send_message(msg)
+        else:
+            with smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=30) as server:
+                if settings.smtp_use_tls:
+                    server.starttls(context=ssl.create_default_context())
+                server.login(settings.smtp_username, settings.smtp_password)
+                server.send_message(msg)
+        logger.info("Sent login code email to %s via SMTP", to_email)
         return True
     except Exception as exc:  # noqa: BLE001
-        logger.warning("Failed to send login code email to %s: %s", to_email, exc)
+        logger.warning("Failed SMTP login code to %s: %s", to_email, exc)
         raise
+
+
+def _send_via_resend(to_email: str, subject: str, body: str) -> bool:
+    settings = get_settings()
+    from_addr = settings.smtp_from or "EduPath AI <onboarding@resend.dev>"
+    payload = (
+        '{"from":"%s","to":["%s"],"subject":"%s","text":%s}'
+        % (
+            from_addr.replace('"', '\\"'),
+            to_email.replace('"', '\\"'),
+            subject.replace('"', '\\"'),
+            __import__("json").dumps(body),
+        )
+    ).encode("utf-8")
+    req = request.Request(
+        "https://api.resend.com/emails",
+        data=payload,
+        headers={
+            "Authorization": f"Bearer {settings.resend_api_key}",
+            "Content-Type": "application/json",
+        },
+        method="POST",
+    )
+    try:
+        with request.urlopen(req, timeout=30) as resp:
+            if 200 <= resp.status < 300:
+                logger.info("Sent login code email to %s via Resend", to_email)
+                return True
+            raise RuntimeError(f"Resend status {resp.status}")
+    except error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="ignore")
+        raise RuntimeError(f"Resend error {exc.code}: {detail}") from exc
 
 
 def request_login_code(db: Session, email: str, name: Optional[str] = None) -> dict:
@@ -69,7 +118,6 @@ def request_login_code(db: Session, email: str, name: Optional[str] = None) -> d
             "message": "New account — enter your full name, then we will send a confirmation code.",
         }
 
-    # Invalidate previous unused codes
     prior = (
         db.query(AuthLoginCode)
         .filter(AuthLoginCode.email == email_norm, AuthLoginCode.consumed.is_(False))
@@ -98,25 +146,42 @@ def request_login_code(db: Session, email: str, name: Optional[str] = None) -> d
     except Exception as exc:  # noqa: BLE001
         delivery_error = str(exc)
 
-    # When SMTP is missing or fails, expose code for local/dev so auth still works
-    expose_code = (not delivered) or (not _smtp_configured())
+    # Production (DEMO_MODE=false): never show codes in the UI — email must succeed.
+    allow_dev_fallback = bool(settings.demo_mode)
+    if not delivered:
+        if allow_dev_fallback:
+            logger.info("DEMO_MODE login code for %s: %s", email_norm, code)
+            return {
+                "ok": True,
+                "email": email_norm,
+                "is_new_user": existing is None,
+                "expires_in_minutes": settings.auth_code_ttl_minutes,
+                "email_sent": False,
+                "message": "Demo mode: email not configured — use the code shown below.",
+                "dev_code": code,
+            }
+        return {
+            "ok": False,
+            "email": email_norm,
+            "is_new_user": existing is None,
+            "email_sent": False,
+            "message": (
+                "Could not send confirmation email. "
+                "Set RESEND_API_KEY or SMTP_HOST/SMTP_USERNAME/SMTP_PASSWORD in the server .env, "
+                "then restart the backend."
+                + (f" Details: {delivery_error}" if delivery_error else "")
+            ),
+            "dev_code": None,
+        }
+
     return {
         "ok": True,
         "email": email_norm,
         "is_new_user": existing is None,
         "expires_in_minutes": settings.auth_code_ttl_minutes,
-        "email_sent": delivered,
-        "message": (
-            f"We sent a confirmation code to {email_norm}."
-            if delivered
-            else (
-                "Confirmation code ready. Email SMTP is not configured on this server, "
-                "so use the code shown below."
-                if expose_code
-                else f"Could not send email ({delivery_error}). Try again or check SMTP settings."
-            )
-        ),
-        "dev_code": code if expose_code else None,
+        "email_sent": True,
+        "message": f"We sent a 6-digit confirmation code to {email_norm}. Check your inbox (and spam).",
+        "dev_code": None,
     }
 
 

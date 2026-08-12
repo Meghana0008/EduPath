@@ -91,12 +91,22 @@ async function request<T>(
       typeof data === "object" && data && "detail" in data
         ? (data as { detail: unknown }).detail
         : text;
-    const message =
-      typeof detail === "string"
-        ? detail
-        : typeof detail === "object" && detail && "confirmation_prompt" in detail
-          ? String((detail as { confirmation_prompt: string }).confirmation_prompt)
-          : `Request failed (${res.status})`;
+    let message = `Request failed (${res.status})`;
+    if (typeof detail === "string") {
+      message = detail;
+    } else if (typeof detail === "object" && detail) {
+      const d = detail as {
+        confirmation_prompt?: string;
+        message?: string;
+        mismatches?: string[];
+      };
+      if (d.message) {
+        const extras = (d.mismatches || []).join(" ");
+        message = extras ? `${d.message} ${extras}` : d.message;
+      } else if (d.confirmation_prompt) {
+        message = d.confirmation_prompt;
+      }
+    }
     throw new ApiClientError(message, res.status, data);
   }
 

@@ -40,6 +40,7 @@ export default function OnboardingPage() {
     state: "",
     city: "",
     category: "",
+    gender: "",
     skills: "",
     interests: "",
     career_goals: "",
@@ -64,6 +65,7 @@ export default function OnboardingPage() {
         state: p.state || "",
         city: p.city || "",
         category: p.category || "",
+        gender: String((p.additional_profile_data as { gender?: string } | undefined)?.gender || ""),
         skills: (p.skills || []).join(", "),
         interests: (p.interests || []).join(", "),
         career_goals: (p.career_goals || []).join(", "),
@@ -89,6 +91,7 @@ export default function OnboardingPage() {
         skills: form.skills.split(",").map((s) => s.trim()).filter(Boolean),
         interests: form.interests.split(",").map((s) => s.trim()).filter(Boolean),
         career_goals: form.career_goals.split(",").map((s) => s.trim()).filter(Boolean),
+        additional_profile_data: form.gender ? { gender: form.gender } : {},
         agent_active: true,
       } as never);
       setStep(2);
@@ -111,8 +114,15 @@ export default function OnboardingPage() {
       const docs = await api.documents();
       setDocsCount(docs.length);
       setFile(null);
+      if (docType === "resume") {
+        setError("");
+      }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Upload failed");
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Upload failed — every document must match your profile (name, college, category, state)."
+      );
     } finally {
       setBusy(false);
     }
@@ -213,12 +223,25 @@ export default function OnboardingPage() {
                   <Input value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} placeholder="General / OBC / SC / ST / EWS" />
                 </div>
                 <div>
+                  <Label>Gender (for schemes like Pragati)</Label>
+                  <select
+                    className="w-full rounded-xl border border-ocean-200 bg-white px-3 py-2 text-sm"
+                    value={form.gender}
+                    onChange={(e) => setForm({ ...form, gender: e.target.value })}
+                  >
+                    <option value="">Select</option>
+                    <option value="female">Female</option>
+                    <option value="male">Male</option>
+                    <option value="other">Other</option>
+                  </select>
+                </div>
+                <div>
                   <Label>Country</Label>
                   <Input value={form.country} onChange={(e) => setForm({ ...form, country: e.target.value })} />
                 </div>
                 <div>
-                  <Label>State</Label>
-                  <Input value={form.state} onChange={(e) => setForm({ ...form, state: e.target.value })} placeholder="Maharashtra" />
+                  <Label>State (important for state scholarships)</Label>
+                  <Input value={form.state} onChange={(e) => setForm({ ...form, state: e.target.value })} placeholder="Gujarat" />
                 </div>
                 <div>
                   <Label>City</Label>

@@ -270,9 +270,24 @@ export default function OpportunityDetailPage() {
                 rel="noopener noreferrer"
                 className="flex items-center justify-center gap-2 w-full py-2.5 rounded-xl bg-gold-500 hover:bg-gold-600 text-white font-medium text-sm transition-colors"
               >
-                Official Apply Link
+                Apply on official portal
                 <ExternalLink className="w-4 h-4" />
               </a>
+              {opportunity.official_source_url &&
+                opportunity.official_source_url !== applyUrl && (
+                  <a
+                    href={opportunity.official_source_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center justify-center gap-2 w-full py-2 rounded-xl border border-ocean-200 text-ocean-800 font-medium text-sm hover:bg-ocean-50 transition-colors"
+                  >
+                    Scheme information page
+                    <ExternalLink className="w-4 h-4" />
+                  </a>
+                )}
+              <p className="text-xs text-ocean-500 text-center">
+                EduPath opens the real portal — it never submits the form for you. Use Start Application above to track progress here.
+              </p>
             </CardContent>
           </Card>
         </div>

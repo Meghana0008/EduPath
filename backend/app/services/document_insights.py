@@ -200,6 +200,10 @@ def build_student_guidance(db: Session, profile: StudentProfile) -> dict[str, An
         opp = db.query(Opportunity).filter(Opportunity.id == match.opportunity_id).first()
         if not opp:
             continue
+        from app.services.opportunity_status import is_recommendable
+
+        if not is_recommendable(opp):
+            continue
         item = {
             "opportunity_id": opp.id,
             "title": opp.title,

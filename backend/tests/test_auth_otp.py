@@ -1,13 +1,22 @@
 from app.database import SessionLocal, Base, engine
 from app.models import AuthLoginCode, User
 from app.services.auth_email import request_login_code, verify_login_code
+from app.config import get_settings
 
 
-def test_otp_signup_and_login_flow():
+def test_otp_signup_and_login_flow(monkeypatch):
+    # Allow local fallback code so the unit test does not need real SMTP
+    settings = get_settings()
+    monkeypatch.setattr(settings, "demo_mode", True)
+    monkeypatch.setattr(settings, "smtp_host", "")
+    monkeypatch.setattr(settings, "smtp_username", "")
+    monkeypatch.setattr(settings, "smtp_password", "")
+    monkeypatch.setattr(settings, "resend_api_key", "")
+
     Base.metadata.create_all(bind=engine)
     db = SessionLocal()
     try:
-        email = "otp-test-user@example.com"
+        email = "otp-test-user@gmail.com"
         existing = db.query(User).filter(User.email == email).first()
         if existing:
             db.query(AuthLoginCode).filter(AuthLoginCode.email == email).delete()
@@ -37,5 +46,24 @@ def test_otp_signup_and_login_flow():
         login = verify_login_code(db, email, code2)
         assert login["ok"] is True
         assert login.get("is_new_user") is False
+    finally:
+        db.close()
+
+
+def test_production_requires_email_delivery(monkeypatch):
+    settings = get_settings()
+    monkeypatch.setattr(settings, "demo_mode", False)
+    monkeypatch.setattr(settings, "smtp_host", "")
+    monkeypatch.setattr(settings, "smtp_username", "")
+    monkeypatch.setattr(settings, "smtp_password", "")
+    monkeypatch.setattr(settings, "resend_api_key", "")
+
+    Base.metadata.create_all(bind=engine)
+    db = SessionLocal()
+    try:
+        result = request_login_code(db, "prod-otp@gmail.com", name="Prod User")
+        assert result["ok"] is False
+        assert result.get("dev_code") is None
+        assert "SMTP" in (result.get("message") or "") or "RESEND" in (result.get("message") or "")
     finally:
         db.close()

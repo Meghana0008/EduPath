@@ -48,17 +48,28 @@ class EligibilityAgent:
             else:
                 failed.append(f"Education level mismatch (need {levels}, have {student_level})")
 
-        # Field of study
+        # Field of study — hard fail when scheme lists required fields
         fields = [f.lower() for f in rules.get("fields", [])]
         if fields:
             student_field = (profile.field_of_study or "").lower()
             if not student_field:
-                unknown.append("Field of study requirement cannot be verified")
+                unknown.append("Field of study requirement cannot be verified — add it in your profile")
             elif any(f in student_field or student_field in f for f in fields):
                 matched.append(f"Field of study matches ({profile.field_of_study})")
             else:
-                # soft fail — related STEM may still be partial
-                failed.append(f"Field may not match required fields: {fields}")
+                failed.append(f"Field of study mismatch (need {fields}, have {profile.field_of_study})")
+
+        # Gender (e.g. AICTE Pragati for girls) — from additional_profile_data.gender
+        genders = [str(g).lower() for g in rules.get("gender", [])]
+        if genders:
+            extra = profile.additional_profile_data or {}
+            student_gender = str(extra.get("gender") or extra.get("sex") or "").lower()
+            if not student_gender:
+                unknown.append("Gender requirement cannot be verified — add gender in profile extras")
+            elif any(g in student_gender or student_gender in g for g in genders):
+                matched.append(f"Gender matches ({student_gender})")
+            else:
+                failed.append(f"Gender mismatch (need {genders}, have {student_gender or 'not set'})")
 
         # Location / state
         states = [s.lower() for s in rules.get("states", [])]
@@ -141,14 +152,15 @@ class EligibilityAgent:
             matched.append(f"Interest matches: {', '.join(interest_hits)}")
 
         # Documents missing are readiness, not hard eligibility — track separately later
-        hard_failed = [f for f in failed if "may not match" not in f.lower()]
-        soft_failed = [f for f in failed if f not in hard_failed]
+        # All explicit failures are hard (category, field, education, gender, income, country, state)
+        hard_failed = list(failed)
+        soft_failed: list[str] = []
 
         if hard_failed:
             status = "NOT_ELIGIBLE"
         elif unknown and not matched:
             status = "UNKNOWN"
-        elif unknown or soft_failed or missing:
+        elif unknown or missing:
             status = "PARTIALLY_ELIGIBLE"
         else:
             status = "ELIGIBLE"
@@ -158,7 +170,7 @@ class EligibilityAgent:
         if status == "ELIGIBLE":
             score = max(score, 90.0)
         if status == "NOT_ELIGIBLE":
-            score = min(score, 40.0)
+            score = min(score, 25.0)
 
         reasoning = self._explain(profile, opportunity, status, matched, failed, unknown, missing)
         return {

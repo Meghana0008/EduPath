@@ -35,7 +35,12 @@ class RankingAgent:
         )
         ranking_score = round(100 * weighted, 1)
 
-        # Present a clear match score for strongly aligned profiles (not acceptance probability)
+        # Do not inflate weak / ineligible matches — students should see real fit
+        if eligibility_score < 40:
+            ranking_score = min(ranking_score, 35.0)
+        elif eligibility_score < 60:
+            ranking_score = min(ranking_score, 55.0)
+
         country = (getattr(profile, "country", None) or "").lower()
         india_profile = country in {"india", "in", "bharat"}
         loc = (getattr(opportunity, "location", None) or "").lower()
@@ -44,12 +49,10 @@ class RankingAgent:
             for c in (getattr(opportunity, "eligibility_structured", None) or {}).get("countries", [])
         ]
         india_opp = "india" in loc or "in" in countries or "india" in countries
-        if india_profile and india_opp and eligibility_score >= 70:
-            ranking_score = round(min(96.0, ranking_score + 8.0), 1)
+        if india_profile and india_opp and eligibility_score >= 80:
+            ranking_score = round(min(96.0, ranking_score + 5.0), 1)
         if eligibility_score >= 90 and career >= 70 and interest >= 70:
             ranking_score = round(min(98.0, max(ranking_score, 0.6 * eligibility_score + 0.4 * ranking_score)), 1)
-        elif eligibility_score >= 85:
-            ranking_score = round(min(95.0, max(ranking_score, ranking_score * 1.08)), 1)
 
         return {
             "ranking_score": ranking_score,

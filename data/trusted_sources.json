@@ -94,5 +94,85 @@
     "country": "IN",
     "enabled": true,
     "notes": "Official UK Chevening application portal (open to eligible Indian citizens)."
+  },
+  {
+    "name": "Digital Gujarat",
+    "url": "https://www.digitalgujarat.gov.in/",
+    "type": "government",
+    "country": "IN",
+    "enabled": true,
+    "notes": "Gujarat state scholarship services."
+  },
+  {
+    "name": "MYSY Gujarat",
+    "url": "https://mysy.guj.nic.in/",
+    "type": "government",
+    "country": "IN",
+    "enabled": true,
+    "notes": "Mukhyamantri Yuva Swavalamban Yojana."
+  },
+  {
+    "name": "MahaDBT Maharashtra",
+    "url": "https://mahadbt.maharashtra.gov.in/",
+    "type": "government",
+    "country": "IN",
+    "enabled": true,
+    "notes": "Maharashtra state scholarship DBT portal."
+  },
+  {
+    "name": "e-Grantz Kerala",
+    "url": "https://www.egrantz.kerala.gov.in/",
+    "type": "government",
+    "country": "IN",
+    "enabled": true,
+    "notes": "Kerala post-matric scholarships."
+  },
+  {
+    "name": "Telangana ePASS",
+    "url": "https://telanganaepass.cgg.gov.in/",
+    "type": "government",
+    "country": "IN",
+    "enabled": true,
+    "notes": "Telangana ePASS scholarships."
+  },
+  {
+    "name": "Jnanabhumi Andhra Pradesh",
+    "url": "https://jnanabhumi.ap.gov.in/",
+    "type": "government",
+    "country": "IN",
+    "enabled": true,
+    "notes": "AP scholarship services."
+  },
+  {
+    "name": "SSP Karnataka",
+    "url": "https://ssp.postmatric.karnataka.gov.in/",
+    "type": "government",
+    "country": "IN",
+    "enabled": true,
+    "notes": "Karnataka state scholarship portal."
+  },
+  {
+    "name": "UP Scholarship",
+    "url": "https://scholarship.up.gov.in/",
+    "type": "government",
+    "country": "IN",
+    "enabled": true,
+    "notes": "Uttar Pradesh scholarship portal."
+  },
+  {
+    "name": "MP Scholarship Portal",
+    "url": "https://scholarshipportal.mp.nic.in/",
+    "type": "government",
+    "country": "IN",
+    "enabled": true,
+    "notes": "Madhya Pradesh scholarship portal."
+  },
+  {
+    "name": "OASIS West Bengal",
+    "url": "https://oasis.gov.in/",
+    "type": "government",
+    "country": "IN",
+    "enabled": true,
+    "notes": "West Bengal OASIS scholarships."
   }
 ]

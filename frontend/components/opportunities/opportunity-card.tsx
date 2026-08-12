@@ -98,7 +98,7 @@ export function OpportunityCard({
             }}
             className="flex items-center gap-1.5 text-xs font-medium text-gold-600 hover:text-gold-500 transition-colors"
           >
-            Official apply link
+            Apply on official portal
             <ExternalLink className="w-3 h-3" />
           </button>
         </CardContent>

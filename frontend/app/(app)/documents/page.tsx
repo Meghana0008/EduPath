@@ -131,7 +131,7 @@ export default function DocumentsPage() {
     <>
       <PageHeader
         title="Document Vault"
-        subtitle="Upload, manage, and analyze your application documents with AI."
+        subtitle="Every upload is checked against your profile — name, college, degree, category, and state must match yours."
         action={
           <Button onClick={() => fileRef.current?.click()} loading={uploading}>
             <Upload className="w-4 h-4" />
@@ -156,6 +156,11 @@ export default function DocumentsPage() {
         <p className="mb-4 text-sm bg-ocean-50 text-ocean-800 rounded-lg px-4 py-2">{message}</p>
       )}
 
+      <p className="mb-4 text-sm text-ocean-700/80">
+        Upload only your own files. Aadhaar, caste/income certificates, transcripts, resumes, and bank
+        documents that belong to someone else are rejected.
+      </p>
+
       <div className="mb-6 flex flex-wrap items-end gap-4">
         <div>
           <Label>Document Type</Label>
@@ -176,7 +181,7 @@ export default function DocumentsPage() {
       {documents.length === 0 ? (
         <EmptyState
           title="No documents uploaded"
-          description="Upload your resume, transcripts, and other application materials."
+          description="Upload your own resume, transcripts, and certificates — they must match your profile fields."
           action={
             <Button onClick={() => fileRef.current?.click()}>
               <Upload className="w-4 h-4" />

@@ -8,8 +8,10 @@ from app.agents.document_agent import DocumentAgent
 from app.api.deps import get_current_user
 from app.config import get_settings
 from app.database import get_db
-from app.models import Document, Opportunity, User
+from app.models import Document, Opportunity, StudentProfile, User
 from app.schemas.common import AnalysisResult, DocumentOut, ResumeAnalyzeRequest, SOPAnalyzeRequest
+from app.services.document_insights import extract_insights
+from app.services.resume_consistency import check_document_profile_consistency
 from app.utils.ids import new_id
 
 router = APIRouter()
@@ -65,14 +67,41 @@ async def upload_document(
 
     agent = DocumentAgent()
     text = agent.extract_text_from_file(str(dest))
+    profile = db.query(StudentProfile).filter(StudentProfile.user_id == user.id).first()
+
+    # Every upload is checked against the logged-in student's profile identity
+    consistency = check_document_profile_consistency(
+        user=user,
+        profile=profile,
+        document_type=dtype,
+        document_text=text or "",
+    )
+    metadata: dict = {
+        "content_type": file.content_type,
+        "consistency": consistency,
+        "insights": extract_insights(dtype, text or "") if text else {},
+    }
+    if consistency.get("blocked"):
+        dest.unlink(missing_ok=True)
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error": "document_profile_mismatch",
+                "message": consistency.get("message"),
+                "mismatches": consistency.get("mismatches") or [],
+                "warnings": consistency.get("warnings") or [],
+                "extracted": consistency.get("extracted") or {},
+            },
+        )
+
     doc = Document(
         id=doc_id,
         student_id=user.id,
         document_type=dtype,
         file_name=file.filename or dest.name,
         file_url=str(dest),
-        verified=False,
-        metadata_json={"content_type": file.content_type},
+        verified=bool(consistency.get("ok") and not consistency.get("warnings")),
+        metadata_json=metadata,
         extracted_text=text[:20000] if text else None,
     )
     db.add(doc)
@@ -134,10 +163,38 @@ def analyze_resume(
         resume_doc = (
             db.query(Document)
             .filter(Document.student_id == user.id, Document.document_type == "resume")
+            .order_by(Document.uploaded_at.desc())
             .first()
         )
         text = resume_doc.extracted_text if resume_doc else ""
+
+    profile = db.query(StudentProfile).filter(StudentProfile.user_id == user.id).first()
+    consistency = check_document_profile_consistency(
+        user=user,
+        profile=profile,
+        document_type="resume",
+        document_text=text or "",
+    )
+    if consistency.get("blocked"):
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error": "document_profile_mismatch",
+                "message": consistency.get("message"),
+                "mismatches": consistency.get("mismatches") or [],
+                "extracted": consistency.get("extracted") or {},
+            },
+        )
+
     result = DocumentAgent().analyze_resume(text or "", opp.title, opp.description)
+    # Surface consistency warnings in the advisory panel
+    if consistency.get("warnings"):
+        result.setdefault("improvements", [])
+        result["improvements"] = list(consistency["warnings"]) + list(result.get("improvements") or [])
+    result["disclaimer"] = (
+        "AI analysis is advisory and only runs after resume identity matches your profile. "
+        "Do not fabricate experience."
+    )
     return AnalysisResult(**result)
 
 

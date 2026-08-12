@@ -17,6 +17,7 @@ from app.config import get_settings
 from app.models import Notification, Opportunity, StudentOpportunityMatch, StudentProfile, User
 from app.services import agent_logger
 from app.services.llm import llm_service
+from app.services.opportunity_status import is_recommendable
 from app.utils.ids import new_id
 
 try:
@@ -170,8 +171,8 @@ class OrchestratorAgent:
             notifications = 0
             steps = list(state.get("steps", []))
 
-            # Always re-evaluate the full catalog for the student (not only newly discovered rows)
-            opportunity_ids = [o.id for o in db.query(Opportunity).all()]
+            # Re-evaluate only open, non-expired catalog rows
+            opportunity_ids = [o.id for o in db.query(Opportunity).all() if is_recommendable(o)]
             for opp_id in opportunity_ids:
                 opp = db.query(Opportunity).filter(Opportunity.id == opp_id).first()
                 if not opp:
@@ -292,6 +293,8 @@ class OrchestratorAgent:
         strong = 0
         notifications = 0
         for opp in db.query(Opportunity).all():
+            if not is_recommendable(opp):
+                continue
             elig = self.eligibility.evaluate(profile, opp)
             ready = self.readiness.evaluate(db, profile, opp)
             ranked = self.ranking.rank(profile, opp, elig["score"], ready["application_readiness_score"])

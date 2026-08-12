@@ -23,6 +23,7 @@ from app.schemas.common import (
     ProfileOut,
     ProfilePrivateOut,
 )
+from app.services.opportunity_status import active_opportunities_query, is_recommendable
 from app.utils.ids import new_id
 
 router = APIRouter()
@@ -136,6 +137,11 @@ def upsert_profile(
     data = payload.model_dump()
     if not data.get("country"):
         data["country"] = profile.country or "India"
+    # Merge additional_profile_data so gender/extras are not wiped
+    if "additional_profile_data" in data:
+        merged = dict(profile.additional_profile_data or {})
+        merged.update(data.get("additional_profile_data") or {})
+        data["additional_profile_data"] = merged
     for field, value in data.items():
         setattr(profile, field, value)
     db.add(profile)
@@ -146,7 +152,11 @@ def upsert_profile(
 
 @router.get("/opportunities", response_model=list[OpportunityOut])
 def list_opportunities(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    return db.query(Opportunity).order_by(Opportunity.deadline.asc().nullslast()).all()
+    return (
+        active_opportunities_query(db)
+        .order_by(Opportunity.deadline.asc().nullslast())
+        .all()
+    )
 
 
 @router.get("/opportunities/{opportunity_id}", response_model=OpportunityOut)
@@ -163,7 +173,7 @@ def search_opportunities(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    query = db.query(Opportunity)
+    query = active_opportunities_query(db)
     if q:
         like = f"%{q}%"
         query = query.filter(
@@ -226,13 +236,13 @@ def list_matches(user: User = Depends(get_current_user), db: Session = Depends(g
         .order_by(StudentOpportunityMatch.ranking_score.desc())
         .all()
     )
-    # Attach opportunities
     result = []
     for m in matches:
-        item = MatchOut.model_validate(m)
         opp = db.query(Opportunity).filter(Opportunity.id == m.opportunity_id).first()
-        if opp:
-            item.opportunity = OpportunityOut.model_validate(opp)
+        if not opp or not is_recommendable(opp):
+            continue
+        item = MatchOut.model_validate(m)
+        item.opportunity = OpportunityOut.model_validate(opp)
         result.append(item)
     return result
 
@@ -243,7 +253,7 @@ def calendar(user: User = Depends(get_current_user), db: Session = Depends(get_d
     matches = db.query(StudentOpportunityMatch).filter(StudentOpportunityMatch.student_id == user.id).all()
     for m in matches:
         opp = db.query(Opportunity).filter(Opportunity.id == m.opportunity_id).first()
-        if not opp:
+        if not opp or not is_recommendable(opp):
             continue
         if opp.deadline:
             events.append(

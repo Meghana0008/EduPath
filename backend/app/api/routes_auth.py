@@ -21,17 +21,56 @@ from app.utils.security import create_access_token, hash_password, verify_passwo
 router = APIRouter()
 
 
+@router.get("/auth/email-status")
+def auth_email_status():
+    """Public check: is the server ready to email login codes to any user?"""
+    import os
+    from pathlib import Path
+
+    from dotenv import load_dotenv
+
+    from app.config import ENV_FILE, ROOT_DIR
+    from app.services.auth_email import email_delivery_configured
+
+    load_dotenv(ENV_FILE, override=True)
+    get_settings.cache_clear()
+    settings = get_settings()
+    ready = email_delivery_configured() or bool(settings.demo_mode)
+    return {
+        "ready": ready,
+        "demo_mode": bool(settings.demo_mode),
+        "env_file_exists": Path(ENV_FILE).exists(),
+        "env_file": str(ENV_FILE),
+        "has_smtp_host": bool(settings.smtp_host or os.getenv("SMTP_HOST")),
+        "has_smtp_user": bool(settings.smtp_username or os.getenv("SMTP_USERNAME")),
+        "has_smtp_pass": bool(settings.smtp_password or os.getenv("SMTP_PASSWORD")),
+        "has_resend": bool(settings.resend_api_key or os.getenv("RESEND_API_KEY")),
+        "root_dir": str(ROOT_DIR),
+        "message": (
+            "Email login is ready — new users get a code automatically."
+            if ready and not settings.demo_mode
+            else (
+                "Demo mode: codes may show on screen if SMTP is not set."
+                if settings.demo_mode
+                else "Server email is not configured yet. Add SMTP or RESEND_API_KEY once in .env."
+            )
+        ),
+    }
+
+
 @router.post("/auth/request-code", response_model=RequestCodeResponse)
 def auth_request_code(payload: RequestCodeRequest, db: Session = Depends(get_db)):
     """Send a 6-digit confirmation code to the email (passwordless login/signup)."""
     result = request_login_code(db, str(payload.email), payload.name)
-    if not result.get("ok"):
+    if result.get("needs_name"):
         return RequestCodeResponse(
             ok=False,
-            needs_name=bool(result.get("needs_name")),
-            message=result.get("message") or "Could not send code",
+            needs_name=True,
+            message=result.get("message") or "Enter your full name to create an account.",
         )
-    return RequestCodeResponse(**result)
+    if not result.get("ok"):
+        raise HTTPException(status_code=400, detail=result.get("message") or "Could not send code")
+    return RequestCodeResponse(**{k: v for k, v in result.items() if k in RequestCodeResponse.model_fields})
 
 
 @router.post("/auth/verify-code", response_model=TokenResponse)

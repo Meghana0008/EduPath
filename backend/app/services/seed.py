@@ -11,14 +11,15 @@ from app.models import (
     OpportunityRequirement,
     StudentOpportunityMatch,
 )
+from app.services.opportunity_status import close_expired_opportunities
 from app.tools.discovery_tools import load_seed_opportunities
 from app.utils.ids import new_id
 
 
 def seed_database(db: Session) -> dict:
-    """Load verified India scholarship catalog. No fake demo user in production mode."""
+    """Load verified India scholarship catalog. Drop outdated rows; close expired deadlines."""
     settings = get_settings()
-    created = {"opportunities": 0, "updated": 0, "removed_demo": 0}
+    created = {"opportunities": 0, "updated": 0, "removed_demo": 0, "removed_stale": 0, "closed_expired": 0}
 
     # Remove legacy demo:// opportunities when running in production
     if not settings.demo_mode:
@@ -31,21 +32,22 @@ def seed_database(db: Session) -> dict:
             .all()
         )
         for opp in stale:
-            db.query(Application).filter(Application.opportunity_id == opp.id).delete()
-            db.query(StudentOpportunityMatch).filter(
-                StudentOpportunityMatch.opportunity_id == opp.id
-            ).delete()
-            db.query(OpportunityRequirement).filter(
-                OpportunityRequirement.opportunity_id == opp.id
-            ).delete()
-            db.delete(opp)
+            _delete_opportunity_graph(db, opp)
             created["removed_demo"] += 1
         db.commit()
 
     seeds = load_seed_opportunities()
+    seed_ids = {seed["id"] for seed in seeds}
+    today = date.today()
+
     for seed in seeds:
         deadline = date.fromisoformat(seed["deadline"]) if seed.get("deadline") else None
         start = date.fromisoformat(seed["application_start_date"]) if seed.get("application_start_date") else None
+        status = seed.get("status") or "open"
+        # Auto-close anything whose deadline already passed
+        if deadline and deadline < today:
+            status = "closed"
+
         existing = db.query(Opportunity).filter(Opportunity.id == seed["id"]).first()
         payload = dict(
             title=seed["title"],
@@ -64,7 +66,7 @@ def seed_database(db: Session) -> dict:
             source_name=seed.get("source_name") or "Trusted Catalog",
             source_verified=bool(seed.get("source_verified")),
             last_verified_at=datetime.now(timezone.utc) if seed.get("source_verified") else None,
-            status=seed.get("status") or "open",
+            status=status,
             eligibility_structured=seed.get("eligibility") or {},
             is_demo=False,
         )
@@ -89,10 +91,29 @@ def seed_database(db: Session) -> dict:
                     )
                 )
 
+    # Remove catalog rows that are no longer in the verified seed (clears outdated 2024 hubs)
+    orphans = db.query(Opportunity).filter(~Opportunity.id.in_(seed_ids)).all()
+    for opp in orphans:
+        _delete_opportunity_graph(db, opp)
+        created["removed_stale"] += 1
+
     db.commit()
+    created["closed_expired"] = close_expired_opportunities(db, today)
     return {
         "demo_mode": settings.demo_mode,
         "catalog": "india_scholarships",
         "created": created,
         "total_opportunities": db.query(Opportunity).count(),
+        "open_opportunities": db.query(Opportunity).filter(Opportunity.status == "open").count(),
     }
+
+
+def _delete_opportunity_graph(db: Session, opp: Opportunity) -> None:
+    db.query(Application).filter(Application.opportunity_id == opp.id).delete()
+    db.query(StudentOpportunityMatch).filter(
+        StudentOpportunityMatch.opportunity_id == opp.id
+    ).delete()
+    db.query(OpportunityRequirement).filter(
+        OpportunityRequirement.opportunity_id == opp.id
+    ).delete()
+    db.delete(opp)

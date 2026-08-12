@@ -2,6 +2,7 @@ import os
 from functools import lru_cache
 from pathlib import Path
 
+from dotenv import load_dotenv
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -10,9 +11,17 @@ ROOT_DIR = Path(__file__).resolve().parents[2]
 DATA_DIR = Path(os.getenv("DATA_DIR", ROOT_DIR / "data"))
 ENV_FILE = ROOT_DIR / ".env" if (ROOT_DIR / ".env").exists() else BACKEND_DIR / ".env"
 
+# Always load root .env into process env so SMTP works even if Settings cache was warm
+load_dotenv(ENV_FILE, override=True)
+
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=str(ENV_FILE), env_file_encoding="utf-8", extra="ignore")
+    model_config = SettingsConfigDict(
+        env_file=str(ENV_FILE),
+        env_file_encoding="utf-8",
+        extra="ignore",
+        case_sensitive=False,
+    )
 
     database_url: str = f"sqlite:///{ROOT_DIR / 'edupath.db'}"
     llm_api_key: str = ""
@@ -42,6 +51,8 @@ class Settings(BaseSettings):
     smtp_password: str = ""
     smtp_from: str = "EduPath AI <noreply@edupath.local>"
     smtp_use_tls: bool = True
+    smtp_use_ssl: bool = False
+    resend_api_key: str = ""
     auth_code_ttl_minutes: int = 10
 
     @property

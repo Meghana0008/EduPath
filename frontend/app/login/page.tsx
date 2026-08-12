@@ -12,7 +12,6 @@ export default function LoginPage() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
-  const [needsName, setNeedsName] = useState(false);
   const [devCode, setDevCode] = useState<string | null>(null);
   const [info, setInfo] = useState("");
   const [error, setError] = useState("");
@@ -27,16 +26,14 @@ export default function LoginPage() {
     try {
       const res = await requestCode(email.trim(), name.trim() || undefined);
       if (res.needs_name) {
-        setNeedsName(true);
-        setInfo(res.message || "Enter your full name to create an account.");
+        setError("New account — please enter your full name, then continue.");
         return;
       }
       if (!res.ok) {
         setError(res.message || "Could not send confirmation code");
         return;
       }
-      setNeedsName(Boolean(res.is_new_user) && !name.trim());
-      setInfo(res.message || "Enter the confirmation code we sent.");
+      setInfo(res.message || "We emailed you a code. Enter it below.");
       if (res.dev_code) setDevCode(res.dev_code);
       setStep("code");
     } catch (err) {
@@ -79,7 +76,7 @@ export default function LoginPage() {
             India scholarships, discovered for you
           </h1>
           <p className="text-ocean-200 text-lg max-w-md leading-relaxed">
-            Sign in with your email and a confirmation code — no password to remember.
+            Automatic email login for every student: we send a code, you enter it, you&apos;re in. No password.
           </p>
           <div className="mt-12 flex items-center gap-3">
             <Sparkles className="w-5 h-5 text-gold-400" />
@@ -99,16 +96,27 @@ export default function LoginPage() {
 
           <div className="rounded-2xl border border-ocean-100 bg-white/80 backdrop-blur-sm p-8 shadow-xl shadow-ocean-900/5">
             <h2 className="font-display text-2xl font-semibold text-ocean-950 mb-1">
-              {step === "email" ? "Continue with email" : "Enter confirmation code"}
+              {step === "email" ? "Sign in or create account" : "Enter your code"}
             </h2>
             <p className="text-sm text-ocean-600 mb-6">
               {step === "email"
-                ? "We’ll send a 6-digit code to verify it’s you."
-                : `Code sent to ${email}. Enter it below to sign in.`}
+                ? "1) Enter email → 2) We send a code automatically → 3) Enter code to log in."
+                : `Code sent to ${email}. Enter it to finish login.`}
             </p>
 
             {step === "email" ? (
               <form onSubmit={sendCode} className="space-y-4">
+                <div>
+                  <Label htmlFor="name">Full name</Label>
+                  <Input
+                    id="name"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    required
+                    placeholder="Your full name"
+                  />
+                  <p className="mt-1 text-xs text-ocean-500">Needed for first-time signup; returning users can use the same name.</p>
+                </div>
                 <div>
                   <Label htmlFor="email">Email</Label>
                   <Input
@@ -120,18 +128,6 @@ export default function LoginPage() {
                     placeholder="you@email.com"
                   />
                 </div>
-                {(needsName || name) && (
-                  <div>
-                    <Label htmlFor="name">Full name (new accounts)</Label>
-                    <Input
-                      id="name"
-                      value={name}
-                      onChange={(e) => setName(e.target.value)}
-                      required={needsName}
-                      placeholder="Your full name"
-                    />
-                  </div>
-                )}
 
                 {info && (
                   <p className="text-sm text-ocean-700 bg-ocean-50 rounded-lg px-3 py-2">{info}</p>
@@ -141,23 +137,11 @@ export default function LoginPage() {
                 )}
 
                 <Button type="submit" className="w-full" loading={submitting}>
-                  Send confirmation code
+                  Continue — send my code
                 </Button>
               </form>
             ) : (
               <form onSubmit={confirmCode} className="space-y-4">
-                {needsName && (
-                  <div>
-                    <Label htmlFor="name2">Full name</Label>
-                    <Input
-                      id="name2"
-                      value={name}
-                      onChange={(e) => setName(e.target.value)}
-                      required
-                      placeholder="Your full name"
-                    />
-                  </div>
-                )}
                 <div>
                   <Label htmlFor="code">Confirmation code</Label>
                   <Input
@@ -169,24 +153,30 @@ export default function LoginPage() {
                     onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
                     required
                     placeholder="6-digit code"
+                    autoFocus
                     className="tracking-[0.3em] text-center text-lg font-semibold"
                   />
                 </div>
 
                 {devCode && (
                   <p className="text-sm text-amber-900 bg-amber-50 rounded-lg px-3 py-2">
-                    Dev mode (SMTP not set): your code is <strong>{devCode}</strong>
+                    Demo mode only: your code is <strong>{devCode}</strong>
                   </p>
                 )}
                 {info && !devCode && (
                   <p className="text-sm text-ocean-700 bg-ocean-50 rounded-lg px-3 py-2">{info}</p>
+                )}
+                {!devCode && (
+                  <p className="text-xs text-ocean-500">
+                    Check inbox and spam. The code expires in a few minutes.
+                  </p>
                 )}
                 {error && (
                   <p className="text-sm text-red-600 bg-red-50 rounded-lg px-3 py-2">{error}</p>
                 )}
 
                 <Button type="submit" className="w-full" loading={submitting}>
-                  Verify & continue
+                  Verify & log in
                 </Button>
                 <button
                   type="button"
