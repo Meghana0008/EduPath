@@ -10,6 +10,18 @@ interface AuthContextValue {
   demoMode: boolean;
   loading: boolean;
   onboardingCompleted: boolean | null;
+  requestCode: (
+    email: string,
+    name?: string
+  ) => Promise<{
+    ok: boolean;
+    needs_name?: boolean;
+    message?: string;
+    email_sent?: boolean;
+    dev_code?: string | null;
+    is_new_user?: boolean;
+  }>;
+  verifyCode: (email: string, code: string, name?: string) => Promise<void>;
   login: (email: string, password: string) => Promise<void>;
   register: (name: string, email: string, password: string) => Promise<void>;
   logout: () => void;
@@ -95,6 +107,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [user, loading, pathname, router, onboardingCompleted]);
 
+  const requestCode = async (email: string, name?: string) => {
+    return api.requestCode(email, name);
+  };
+
+  const verifyCode = async (email: string, code: string, name?: string) => {
+    const res = await api.verifyCode(email, code, name);
+    setToken(res.access_token);
+    setDemoMode(Boolean(res.demo_mode));
+    setDemoModeState(Boolean(res.demo_mode));
+    const me = await api.me();
+    setUser(me);
+    await refreshOnboarding();
+    await routeAfterAuth(router);
+  };
+
   const login = async (email: string, password: string) => {
     const res = await api.login(email, password);
     setToken(res.access_token);
@@ -132,6 +159,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         demoMode,
         loading,
         onboardingCompleted,
+        requestCode,
+        verifyCode,
         login,
         register,
         logout,

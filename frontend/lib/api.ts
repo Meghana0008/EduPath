@@ -104,6 +104,35 @@ async function request<T>(
 }
 
 export const api = {
+  requestCode: (email: string, name?: string) =>
+    request<{
+      ok: boolean;
+      email?: string;
+      is_new_user?: boolean;
+      needs_name?: boolean;
+      expires_in_minutes?: number;
+      email_sent?: boolean;
+      message?: string;
+      dev_code?: string | null;
+    }>(
+      "/auth/request-code",
+      {
+        method: "POST",
+        body: JSON.stringify({ email, name: name || undefined }),
+      },
+      false
+    ),
+
+  verifyCode: (email: string, code: string, name?: string) =>
+    request<TokenResponse>(
+      "/auth/verify-code",
+      {
+        method: "POST",
+        body: JSON.stringify({ email, code, name: name || undefined }),
+      },
+      false
+    ),
+
   login: (email: string, password: string) =>
     request<TokenResponse>("/auth/login", {
       method: "POST",
@@ -117,6 +146,91 @@ export const api = {
     }, false),
 
   me: () => request<User>("/auth/me"),
+
+  emailStatus: () =>
+    request<{
+      connected: boolean;
+      email_address?: string;
+      imap_host?: string;
+      auto_apply: boolean;
+      enabled: boolean;
+      last_synced_at?: string | null;
+      pending_proposals: number;
+      watched_applications: number;
+      watched_titles: string[];
+      note: string;
+    }>("/email/status"),
+
+  emailConnect: (data: {
+    email_address: string;
+    app_password: string;
+    imap_host?: string;
+    imap_port?: number;
+    auto_apply?: boolean;
+    enabled?: boolean;
+    sync_now?: boolean;
+  }) =>
+    request<{
+      ok: boolean;
+      connected: boolean;
+      sync?: {
+        watched_applications?: number;
+        scanned?: number;
+        matched?: number;
+        message?: string;
+      } | null;
+    }>("/email/connect", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+
+  emailDisconnect: () =>
+    request<{ ok: boolean }>("/email/disconnect", { method: "POST" }),
+
+  emailSync: () =>
+    request<{
+      ok: boolean;
+      scanned: number;
+      matched?: number;
+      ignored?: number;
+      watched_applications?: number;
+      proposals: unknown[];
+      last_synced_at: string;
+      message?: string;
+    }>("/email/sync", { method: "POST" }),
+
+  emailIngest: (data: {
+    subject: string;
+    body: string;
+    from_address?: string;
+    auto_apply?: boolean;
+  }) =>
+    request<{ ok: boolean; proposal?: Record<string, unknown>; reason?: string }>("/email/ingest", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+
+  emailProposals: () =>
+    request<
+      Array<{
+        notification_id: string;
+        application_id?: string;
+        from_status?: string;
+        proposed_status?: string;
+        subject?: string;
+        snippet?: string;
+        status?: string;
+      }>
+    >("/email/proposals"),
+
+  emailApplyProposal: (id: string, confirm = true) =>
+    request<{ ok: boolean }>(`/email/proposals/${id}/apply`, {
+      method: "POST",
+      body: JSON.stringify({ confirm }),
+    }),
+
+  emailDismissProposal: (id: string) =>
+    request<{ ok: boolean }>(`/email/proposals/${id}/dismiss`, { method: "POST" }),
 
   dashboard: () => request<DashboardStats>("/dashboard"),
 

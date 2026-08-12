@@ -2,6 +2,7 @@ from app.models.entities import (
     AgentRun,
     Application,
     ApplicationDocument,
+    AuthLoginCode,
     Document,
     Notification,
     Opportunity,
@@ -13,6 +14,7 @@ from app.models.entities import (
 
 __all__ = [
     "User",
+    "AuthLoginCode",
     "StudentProfile",
     "Opportunity",
     "OpportunityRequirement",

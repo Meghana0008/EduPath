@@ -1,6 +1,14 @@
 from fastapi import APIRouter
 
-from app.api import routes_agent, routes_apps, routes_auth, routes_chat, routes_core, routes_docs
+from app.api import (
+    routes_agent,
+    routes_apps,
+    routes_auth,
+    routes_chat,
+    routes_core,
+    routes_docs,
+    routes_email,
+)
 
 
 api_router = APIRouter(prefix="/api")
@@ -10,3 +18,4 @@ api_router.include_router(routes_apps.router, tags=["applications"])
 api_router.include_router(routes_docs.router, tags=["documents"])
 api_router.include_router(routes_agent.router, tags=["agent"])
 api_router.include_router(routes_chat.router, tags=["chat"])
+api_router.include_router(routes_email.router, tags=["email"])

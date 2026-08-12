@@ -27,6 +27,28 @@ class RegisterRequest(BaseModel):
     password: str = Field(min_length=6)
 
 
+class RequestCodeRequest(BaseModel):
+    email: EmailStr
+    name: Optional[str] = None
+
+
+class VerifyCodeRequest(BaseModel):
+    email: EmailStr
+    code: str = Field(min_length=4, max_length=8)
+    name: Optional[str] = None
+
+
+class RequestCodeResponse(BaseModel):
+    ok: bool
+    email: Optional[EmailStr] = None
+    is_new_user: bool = False
+    needs_name: bool = False
+    expires_in_minutes: Optional[int] = None
+    email_sent: bool = False
+    message: str = ""
+    dev_code: Optional[str] = None
+
+
 class UserOut(ORMModel):
     id: str
     name: str

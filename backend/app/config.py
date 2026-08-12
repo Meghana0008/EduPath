@@ -35,6 +35,15 @@ class Settings(BaseSettings):
     access_token_expire_minutes: int = 60 * 24 * 7
     algorithm: str = "HS256"
 
+    # Optional SMTP for login confirmation codes. If unset, codes are returned in API (dev).
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_username: str = ""
+    smtp_password: str = ""
+    smtp_from: str = "EduPath AI <noreply@edupath.local>"
+    smtp_use_tls: bool = True
+    auth_code_ttl_minutes: int = 10
+
     @property
     def origins(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]

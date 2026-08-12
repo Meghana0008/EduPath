@@ -29,6 +29,7 @@ class User(Base):
     email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False, index=True)
     hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
     is_demo: Mapped[bool] = mapped_column(Boolean, default=False)
+    email_verified: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     profile: Mapped[Optional["StudentProfile"]] = relationship(back_populates="user", uselist=False)
@@ -37,6 +38,20 @@ class User(Base):
     matches: Mapped[list["StudentOpportunityMatch"]] = relationship(back_populates="student")
     notifications: Mapped[list["Notification"]] = relationship(back_populates="student")
     agent_runs: Mapped[list["AgentRun"]] = relationship(back_populates="student")
+
+
+class AuthLoginCode(Base):
+    """One-time email confirmation codes for passwordless login/signup."""
+
+    __tablename__ = "auth_login_codes"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    email: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    name: Mapped[Optional[str]] = mapped_column(String(255))
+    code_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    consumed: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 class StudentProfile(Base):
