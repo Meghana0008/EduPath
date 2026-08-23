@@ -55,9 +55,19 @@ class Settings(BaseSettings):
     resend_api_key: str = ""
     auth_code_ttl_minutes: int = 10
 
+    # Gmail OAuth ("Connect Gmail" — Google login, no app password)
+    google_client_id: str = ""
+    google_client_secret: str = ""
+    google_redirect_uri: str = "http://localhost:8000/api/email/gmail/callback"
+    frontend_url: str = "http://localhost:3000"
+
     @property
     def origins(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
+
+    @property
+    def gmail_oauth_configured(self) -> bool:
+        return bool(self.google_client_id and self.google_client_secret)
 
     @property
     def ranking_weights(self) -> dict[str, float]:

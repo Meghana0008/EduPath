@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { ArrowRight, Mail, RefreshCw } from "lucide-react";
 import { api, ApiClientError } from "@/lib/api";
 import type { Application } from "@/lib/types";
@@ -14,18 +15,18 @@ import { Textarea } from "@/components/ui/textarea";
 import { getStatusColor, formatDate, statusLabel } from "@/lib/utils";
 
 export default function ApplicationsPage() {
+  const searchParams = useSearchParams();
   const [applications, setApplications] = useState<Application[]>([]);
   const [loading, setLoading] = useState(true);
   const [emailInfo, setEmailInfo] = useState<Awaited<ReturnType<typeof api.emailStatus>> | null>(null);
   const [proposals, setProposals] = useState<Awaited<ReturnType<typeof api.emailProposals>>>([]);
   const [busy, setBusy] = useState<string | null>(null);
   const [message, setMessage] = useState("");
-  const [emailAddress, setEmailAddress] = useState("");
-  const [appPassword, setAppPassword] = useState("");
   const [autoApply, setAutoApply] = useState(true);
   const [pasteSubject, setPasteSubject] = useState("");
   const [pasteBody, setPasteBody] = useState("");
   const autoSynced = useRef(false);
+  const handledOauth = useRef(false);
 
   const load = async () => {
     try {
@@ -37,7 +38,6 @@ export default function ApplicationsPage() {
       setApplications(apps);
       setEmailInfo(status);
       setProposals(props.filter((p) => p.status !== "dismissed" && p.status !== "applied"));
-      if (status.email_address) setEmailAddress(status.email_address);
       setAutoApply(status.auto_apply);
       return status;
     } catch {
@@ -62,27 +62,37 @@ export default function ApplicationsPage() {
     })();
   }, []);
 
-  const connect = async () => {
+  useEffect(() => {
+    if (handledOauth.current) return;
+    const gmail = searchParams.get("gmail");
+    if (!gmail) return;
+    handledOauth.current = true;
+    const reason = searchParams.get("reason");
+    if (gmail === "connected") {
+      setMessage(
+        searchParams.get("sync") === "error"
+          ? `Gmail connected, but first inbox sync had an issue${reason ? `: ${reason}` : "."}`
+          : "Gmail connected. Inbox sync started for your tracked applications."
+      );
+      load();
+    } else if (gmail === "error") {
+      setMessage(reason || "Gmail connection was cancelled or failed.");
+    }
+  }, [searchParams]);
+
+  const connectGmail = async () => {
     setBusy("connect");
     setMessage("");
     try {
-      const res = await api.emailConnect({
-        email_address: emailAddress,
-        app_password: appPassword,
-        auto_apply: autoApply,
-        enabled: true,
-        sync_now: true,
-      });
-      setAppPassword("");
-      autoSynced.current = true;
-      setMessage(
-        res.sync?.message ||
-          "Email connected. Agent watches only applications you started."
-      );
-      await load();
+      if (emailInfo?.connected) {
+        // keep auto-apply preference before reconnect flows
+        await api.emailGmailPrefs(autoApply);
+      }
+      const res = await api.emailGmailStart();
+      if (!res.authorize_url) throw new Error("No Google login URL returned");
+      window.location.href = res.authorize_url;
     } catch (err) {
-      setMessage(err instanceof Error ? err.message : "Connect failed");
-    } finally {
+      setMessage(err instanceof Error ? err.message : "Could not start Gmail connect");
       setBusy(null);
     }
   };
@@ -91,6 +101,7 @@ export default function ApplicationsPage() {
     setBusy("sync");
     setMessage("");
     try {
+      await api.emailGmailPrefs(autoApply);
       const res = await api.emailSync();
       setMessage(
         res.message ||
@@ -152,7 +163,7 @@ export default function ApplicationsPage() {
     <>
       <PageHeader
         title="Applications"
-        subtitle="Start an application, connect email once — the agent tracks only mails for those schemes."
+        subtitle="Start an application, connect Gmail once — the agent tracks only mails for those schemes."
       />
 
       {message && (
@@ -169,11 +180,11 @@ export default function ApplicationsPage() {
         <CardContent className="space-y-4">
           <p className="text-sm text-ocean-600">
             {emailInfo?.note ||
-              "Connect your inbox with an app password. The agent only tracks emails for schemes you started applying to."}
+              "Click Connect Gmail, sign in with Google, and EduPath reads only emails related to schemes you started."}
           </p>
           <div className="flex flex-wrap gap-2 text-xs">
             <Badge variant={emailInfo?.connected ? "success" : "warning"} className="normal-case tracking-normal">
-              {emailInfo?.connected ? `Connected: ${emailInfo.email_address}` : "Not connected"}
+              {emailInfo?.connected ? `Gmail connected: ${emailInfo.email_address}` : "Gmail not connected"}
             </Badge>
             <Badge variant="ocean" className="normal-case tracking-normal">
               Watching {watchedCount} application{watchedCount === 1 ? "" : "s"}
@@ -199,41 +210,44 @@ export default function ApplicationsPage() {
             </p>
           )}
 
-          <div className="grid md:grid-cols-2 gap-4">
-            <div>
-              <Label>Email</Label>
-              <Input
-                type="email"
-                value={emailAddress}
-                onChange={(e) => setEmailAddress(e.target.value)}
-                placeholder="you@gmail.com"
-              />
-            </div>
-            <div>
-              <Label>App password</Label>
-              <Input
-                type="password"
-                value={appPassword}
-                onChange={(e) => setAppPassword(e.target.value)}
-                placeholder="Gmail/Outlook app password"
-              />
-            </div>
-          </div>
           <label className="flex items-center gap-2 text-sm text-ocean-700">
             <input
               type="checkbox"
               checked={autoApply}
               onChange={(e) => setAutoApply(e.target.checked)}
             />
-            Auto-apply high-confidence updates (APPROVED / REJECTED need this checked)
+            Auto-apply status updates from matched emails
           </label>
+
           <div className="flex flex-wrap gap-2">
-            <Button onClick={connect} loading={busy === "connect"}>
-              Connect & start agent
+            <Button onClick={connectGmail} loading={busy === "connect"}>
+              {emailInfo?.connected ? "Reconnect Gmail" : "Connect Gmail"}
             </Button>
             <Button variant="outline" onClick={sync} loading={busy === "sync"} disabled={!emailInfo?.connected}>
               <RefreshCw className="w-4 h-4" />
-              Run agent now
+              Sync inbox now
+            </Button>
+            <Button
+              variant="outline"
+              loading={busy === "demo"}
+              onClick={async () => {
+                setBusy("demo");
+                setMessage("");
+                try {
+                  const res = await api.runFakeScholarshipDemo();
+                  setMessage(
+                    `${res.message} Final status: ${res.final_status}. Check the bell icon for alerts.`
+                  );
+                  await load();
+                  window.open(res.fake_webpage, "_blank");
+                } catch (err) {
+                  setMessage(err instanceof Error ? err.message : "Demo failed");
+                } finally {
+                  setBusy(null);
+                }
+              }}
+            >
+              Run fake scholarship alert demo
             </Button>
             {emailInfo?.connected && (
               <Button
@@ -241,6 +255,7 @@ export default function ApplicationsPage() {
                 onClick={async () => {
                   await api.emailDisconnect();
                   await load();
+                  setMessage("Gmail disconnected.");
                 }}
               >
                 Disconnect
@@ -248,10 +263,19 @@ export default function ApplicationsPage() {
             )}
           </div>
 
+          {!emailInfo?.gmail_oauth_ready && (
+            <p className="text-sm text-amber-900 bg-amber-50 rounded-lg px-3 py-2">
+              Server setup needed: add <code className="text-xs">GOOGLE_CLIENT_ID</code> and{" "}
+              <code className="text-xs">GOOGLE_CLIENT_SECRET</code> in <code className="text-xs">.env</code>, with
+              redirect URI <code className="text-xs">http://localhost:8000/api/email/gmail/callback</code>, then
+              restart the API.
+            </p>
+          )}
+
           <div className="pt-4 border-t border-ocean-100 space-y-3">
-            <h3 className="font-medium text-ocean-900">Or paste one application email</h3>
+            <h3 className="font-medium text-ocean-900">Optional: paste one email</h3>
             <p className="text-xs text-ocean-500">
-              Only updates if it matches a scheme you already started in EduPath.
+              Use this only for a quick test. Normal flow is Connect Gmail → Sync inbox.
             </p>
             <div>
               <Label>Subject</Label>
@@ -309,7 +333,7 @@ export default function ApplicationsPage() {
       {applications.length === 0 ? (
         <EmptyState
           title="No applications yet"
-          description="Start an application from an opportunity page. Then connect email — the agent watches only those schemes."
+          description="Start an application from an opportunity page. Then connect Gmail — the agent watches only those schemes."
         />
       ) : (
         <div className="space-y-4">

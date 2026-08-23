@@ -430,11 +430,13 @@ class EmailTrackingAgent:
         db: Session,
         student_id: str,
         *,
-        email_address: str,
-        app_password: str,
+        email_address: str = "",
+        app_password: str = "",
         imap_host: str = "imap.gmail.com",
         imap_port: int = 993,
         auto_apply: bool = True,
+        access_token: str | None = None,
+        auth_mode: str = "imap",
     ) -> dict[str, Any]:
         """Full agent loop: watch only mails for applications the student started."""
         run = agent_logger.start_agent_run(
@@ -468,15 +470,25 @@ class EmailTrackingAgent:
             f"Watching {len(watched)} application(s) with terms: {', '.join(watch_terms[:6])}",
         )
 
-        messages = self.fetch_imap_messages(
-            email_address=email_address,
-            app_password=app_password,
-            imap_host=imap_host,
-            imap_port=imap_port,
-            watch_terms=watch_terms,
-            limit=40,
-        )
-        agent_logger.append_step(db, run, f"Fetched {len(messages)} candidate email(s) for watched schemes")
+        if auth_mode == "gmail_oauth" and access_token:
+            from app.services.gmail_oauth import fetch_gmail_messages
+
+            messages = fetch_gmail_messages(
+                access_token,
+                watch_terms=watch_terms,
+                limit=40,
+            )
+            agent_logger.append_step(db, run, f"Fetched {len(messages)} Gmail message(s) via Google login")
+        else:
+            messages = self.fetch_imap_messages(
+                email_address=email_address,
+                app_password=app_password,
+                imap_host=imap_host,
+                imap_port=imap_port,
+                watch_terms=watch_terms,
+                limit=40,
+            )
+            agent_logger.append_step(db, run, f"Fetched {len(messages)} candidate email(s) for watched schemes")
 
         proposals = []
         matched = 0
@@ -511,6 +523,7 @@ class EmailTrackingAgent:
                 "scanned": len(messages),
                 "matched": matched,
                 "ignored": ignored,
+                "auth_mode": auth_mode,
             },
         )
         return {

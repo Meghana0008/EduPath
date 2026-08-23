@@ -160,7 +160,9 @@ export const api = {
   emailStatus: () =>
     request<{
       connected: boolean;
+      auth_mode?: string | null;
       email_address?: string;
+      gmail_oauth_ready?: boolean;
       imap_host?: string;
       auto_apply: boolean;
       enabled: boolean;
@@ -171,27 +173,13 @@ export const api = {
       note: string;
     }>("/email/status"),
 
-  emailConnect: (data: {
-    email_address: string;
-    app_password: string;
-    imap_host?: string;
-    imap_port?: number;
-    auto_apply?: boolean;
-    enabled?: boolean;
-    sync_now?: boolean;
-  }) =>
-    request<{
-      ok: boolean;
-      connected: boolean;
-      sync?: {
-        watched_applications?: number;
-        scanned?: number;
-        matched?: number;
-        message?: string;
-      } | null;
-    }>("/email/connect", {
+  emailGmailStart: () =>
+    request<{ ok: boolean; authorize_url: string }>("/email/gmail/start"),
+
+  emailGmailPrefs: (auto_apply: boolean) =>
+    request<{ ok: boolean; auto_apply: boolean }>("/email/gmail/prefs", {
       method: "POST",
-      body: JSON.stringify(data),
+      body: JSON.stringify({ auto_apply }),
     }),
 
   emailDisconnect: () =>
@@ -241,6 +229,20 @@ export const api = {
 
   emailDismissProposal: (id: string) =>
     request<{ ok: boolean }>(`/email/proposals/${id}/dismiss`, { method: "POST" }),
+
+  runFakeScholarshipDemo: () =>
+    request<{
+      ok: boolean;
+      opportunity_id: string;
+      application_id: string;
+      final_status: string;
+      fake_webpage: string;
+      edupath_opportunity: string;
+      edupath_application: string;
+      steps: Array<{ email: string; status: string }>;
+      how_alerts_work: string[];
+      message: string;
+    }>("/demo/fake-scholarship-run", { method: "POST" }),
 
   dashboard: () => request<DashboardStats>("/dashboard"),
 
