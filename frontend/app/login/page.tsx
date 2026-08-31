@@ -34,7 +34,9 @@ export default function LoginPage() {
         return;
       }
       setInfo(res.message || "We emailed you a code. Enter it below.");
-      if (res.dev_code) setDevCode(res.dev_code);
+      // Only show on-screen code in true offline demo (never when email was sent)
+      if (res.dev_code && res.email_sent === false) setDevCode(res.dev_code);
+      else setDevCode(null);
       setStep("code");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not send code");
@@ -160,7 +162,7 @@ export default function LoginPage() {
 
                 {devCode && (
                   <p className="text-sm text-amber-900 bg-amber-50 rounded-lg px-3 py-2">
-                    Demo mode only: your code is <strong>{devCode}</strong>
+                    Offline demo only (email not configured): your code is <strong>{devCode}</strong>
                   </p>
                 )}
                 {info && !devCode && (
@@ -168,7 +170,7 @@ export default function LoginPage() {
                 )}
                 {!devCode && (
                   <p className="text-xs text-ocean-500">
-                    Check inbox and spam. The code expires in a few minutes.
+                    Open the email we just sent, copy the 6-digit code, and enter it here. Check spam if you do not see it.
                   </p>
                 )}
                 {error && (

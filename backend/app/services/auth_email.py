@@ -108,6 +108,16 @@ def _send_via_resend(to_email: str, subject: str, body: str) -> bool:
 
 
 def request_login_code(db: Session, email: str, name: Optional[str] = None) -> dict:
+    # Always re-read .env so DEMO_MODE / SMTP changes apply without stale cache
+    from dotenv import load_dotenv
+
+    from app.config import ENV_FILE
+
+    try:
+        get_settings.cache_clear()
+    except Exception:  # noqa: BLE001
+        pass
+    load_dotenv(ENV_FILE, override=True)
     settings = get_settings()
     email_norm = email.strip().lower()
     existing = db.query(User).filter(User.email == email_norm).first()
@@ -145,42 +155,60 @@ def request_login_code(db: Session, email: str, name: Optional[str] = None) -> d
         delivered = send_login_code_email(email_norm, code)
     except Exception as exc:  # noqa: BLE001
         delivery_error = str(exc)
+        logger.warning("Login code email failed for %s: %s", email_norm, delivery_error)
 
-    # Production (DEMO_MODE=false): never show codes in the UI — email must succeed.
-    allow_dev_fallback = bool(settings.demo_mode)
-    if not delivered:
-        if allow_dev_fallback:
-            logger.info("DEMO_MODE login code for %s: %s", email_norm, code)
-            return {
-                "ok": True,
-                "email": email_norm,
-                "is_new_user": existing is None,
-                "expires_in_minutes": settings.auth_code_ttl_minutes,
-                "email_sent": False,
-                "message": "Demo mode: email not configured — use the code shown below.",
-                "dev_code": code,
-            }
+    # Real email path: never put the OTP in the API/UI response
+    if delivered:
+        return {
+            "ok": True,
+            "email": email_norm,
+            "is_new_user": existing is None,
+            "expires_in_minutes": settings.auth_code_ttl_minutes,
+            "email_sent": True,
+            "message": f"We sent a 6-digit confirmation code to {email_norm}. Check your inbox (and spam).",
+            "dev_code": None,
+        }
+
+    smtp_ready = email_delivery_configured()
+    # If SMTP/Resend is configured, fail closed — do not leak the code into the browser
+    if smtp_ready:
         return {
             "ok": False,
             "email": email_norm,
             "is_new_user": existing is None,
             "email_sent": False,
             "message": (
-                "Could not send confirmation email. "
-                "Set RESEND_API_KEY or SMTP_HOST/SMTP_USERNAME/SMTP_PASSWORD in the server .env, "
-                "then restart the backend."
+                "Could not deliver the confirmation email. "
+                "Check SMTP credentials / app password and try again."
                 + (f" Details: {delivery_error}" if delivery_error else "")
             ),
             "dev_code": None,
         }
 
+    # Offline/demo only: no mail server configured at all
+    if settings.demo_mode:
+        logger.info("DEMO_MODE on-screen login code for %s (SMTP not configured)", email_norm)
+        return {
+            "ok": True,
+            "email": email_norm,
+            "is_new_user": existing is None,
+            "expires_in_minutes": settings.auth_code_ttl_minutes,
+            "email_sent": False,
+            "message": "Demo mode: email not configured — use the code shown below.",
+            "dev_code": code,
+        }
+
     return {
-        "ok": True,
+        "ok": False,
         "email": email_norm,
         "is_new_user": existing is None,
-        "expires_in_minutes": settings.auth_code_ttl_minutes,
-        "email_sent": True,
-        "message": f"We sent a 6-digit confirmation code to {email_norm}. Check your inbox (and spam).",
+        "email_sent": False,
+        "message": (
+            "Could not send confirmation email. "
+            "Set RESEND_API_KEY or SMTP_HOST/SMTP_USERNAME/SMTP_PASSWORD in the server .env, "
+            "then restart the backend."
+            + (f" Details: {delivery_error}" if delivery_error else "")
+        ),
         "dev_code": None,
     }
 

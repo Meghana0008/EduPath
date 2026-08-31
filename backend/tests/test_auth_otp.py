@@ -31,10 +31,12 @@ def _purge_user(db, email: str) -> None:
 
 
 def test_otp_signup_and_login_flow(monkeypatch):
-    # Force offline/dev path: no live email delivery, return visible demo code.
+    # Offline demo path: no SMTP, DEMO_MODE on → on-screen code allowed.
     settings = get_settings()
     monkeypatch.setattr(settings, "demo_mode", True)
     monkeypatch.setattr(auth_email, "send_login_code_email", lambda *_a, **_k: False)
+    monkeypatch.setattr(auth_email, "email_delivery_configured", lambda: False)
+    monkeypatch.setattr(auth_email, "get_settings", lambda: settings)
 
     Base.metadata.create_all(bind=engine)
     db = SessionLocal()
@@ -69,10 +71,31 @@ def test_otp_signup_and_login_flow(monkeypatch):
         db.close()
 
 
+def test_smtp_configured_never_returns_onscreen_code(monkeypatch):
+    """When SMTP is configured, failed send must not leak OTP into the UI."""
+    settings = get_settings()
+    monkeypatch.setattr(settings, "demo_mode", True)  # even with demo on
+    monkeypatch.setattr(auth_email, "send_login_code_email", lambda *_a, **_k: False)
+    monkeypatch.setattr(auth_email, "email_delivery_configured", lambda: True)
+    monkeypatch.setattr(auth_email, "get_settings", lambda: settings)
+
+    Base.metadata.create_all(bind=engine)
+    db = SessionLocal()
+    try:
+        result = request_login_code(db, "smtp-guard@gmail.com", name="Guard User")
+        assert result["ok"] is False
+        assert result.get("dev_code") is None
+        assert result.get("email_sent") is False
+    finally:
+        db.close()
+
+
 def test_production_requires_email_delivery(monkeypatch):
     settings = get_settings()
     monkeypatch.setattr(settings, "demo_mode", False)
     monkeypatch.setattr(auth_email, "send_login_code_email", lambda *_a, **_k: False)
+    monkeypatch.setattr(auth_email, "email_delivery_configured", lambda: False)
+    monkeypatch.setattr(auth_email, "get_settings", lambda: settings)
 
     Base.metadata.create_all(bind=engine)
     db = SessionLocal()
