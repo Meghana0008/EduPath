@@ -1,6 +1,10 @@
 # Agent Workflows
 
-## 1. Autonomous Discovery
+## 1. Batch Discovery Workflow
+
+Scheduled / button-triggered discovery is a **fixed LangGraph pipeline**
+(exposed to chat as the MCP tool `search_opportunities`). Chat itself uses the
+LLM policy loop in section 7 — not this fixed graph.
 
 ```text
 START
@@ -105,17 +109,44 @@ Bucket into 2026 / 2027 / 2028 milestones
 Link recommendations to real opportunity IDs
 ```
 
+## 7. Chat policy loop (L2)
+
+```text
+User message
+  ↓
+MCP initialize + list_tools  (discover schemas)
+  ↓
+PolicyAgent decide (LLM JSON: call_tool | finish)
+  ↓
+call_tool? → MCP call_tool → append observation → loop (max 6)
+  ↓
+finish? → draft reply from observations
+  ↓
+ReflectionAgent (ground URLs/amounts/deadlines; strip unsafe claims)
+  ↓
+Final grounded reply + agent_run trace
+```
+
+Deterministic eligibility/ranking remain **tools/guardrails**, not the policy itself.
+
+Sanitized offline transcript: [l2-agent-trace.md](l2-agent-trace.md)
+
+Reproduce:
+
+```bash
+cd backend
+python scripts/smoke_l2_agent.py
+pytest tests/test_mcp_policy_loop.py -q
+```
+
 ## Agent Activity Trace
 
-Every orchestrator/discovery run writes `agent_runs` rows with step messages:
+Every orchestrator/discovery/policy run writes `agent_runs` rows with step messages:
 
-- Loaded student profile
-- Connected to trusted sources
-- Scanned N sources
-- Discovered N opportunities
-- Removed duplicates
-- Evaluated opportunities
-- Found strong matches
-- Generated notifications
+- Loaded student profile / MCP list_tools
+- Policy decide #N
+- Called MCP tool `…`
+- Reflection pass passed|revised
+- Scanned N sources / Discovered N opportunities (batch discovery)
 
 This powers the Agent Activity UI for demos.

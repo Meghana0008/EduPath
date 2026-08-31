@@ -16,7 +16,6 @@ from app.agents.status_agent import ApplicationStatusAgent
 from app.config import get_settings
 from app.models import Notification, Opportunity, StudentOpportunityMatch, StudentProfile, User
 from app.services import agent_logger
-from app.services.llm import llm_service
 from app.services.opportunity_status import is_recommendable
 from app.utils.ids import new_id
 
@@ -64,9 +63,9 @@ class OrchestratorAgent:
         parent = agent_logger.start_agent_run(
             db,
             agent_name="orchestrator",
-            run_type="autonomous_discovery",
+            run_type="batch_discovery",
             student_id=student_id,
-            input_summary="Autonomous opportunity discovery workflow",
+            input_summary="Batch opportunity discovery workflow (LangGraph/sequential)",
             metadata={"engine": "langgraph" if HAS_LANGGRAPH else "sequential"},
         )
         agent_logger.append_step(db, parent, "Loaded student profile")
@@ -394,113 +393,7 @@ class OrchestratorAgent:
         return True
 
     def chat(self, db: Session, user: User, message: str, opportunity_id: Optional[str] = None) -> dict[str, Any]:
-        """Tool-using assistant — routes to the same agents/services."""
-        profile = db.query(StudentProfile).filter(StudentProfile.user_id == user.id).first()
-        lower = message.lower()
-        tools_used: list[str] = []
-        data: dict[str, Any] = {}
-        requires_confirmation = False
-        confirmation_prompt = None
+        """LLM policy loop over MCP tools: decide → act → observe → reflect → finish."""
+        from app.agents.policy_agent import PolicyAgent
 
-        if any(k in lower for k in ["find scholarship", "find opportunities", "search for me", "discover"]):
-            tools_used.append("search_opportunities")
-            result = self.run_discovery_workflow(db, user.id)
-            reply = (
-                f"I ran the discovery workflow. Found {result['summary']['discovered']} opportunities, "
-                f"{result['summary']['strong_matches']} strong matches."
-            )
-            data = result
-        elif "eligible" in lower or "why am i" in lower:
-            tools_used.extend(["get_student_profile", "check_eligibility"])
-            if not opportunity_id:
-                top = (
-                    db.query(StudentOpportunityMatch)
-                    .filter(StudentOpportunityMatch.student_id == user.id)
-                    .order_by(StudentOpportunityMatch.ranking_score.desc())
-                    .first()
-                )
-                opportunity_id = top.opportunity_id if top else None
-            if opportunity_id and profile:
-                opp = db.query(Opportunity).filter(Opportunity.id == opportunity_id).first()
-                elig = self.eligibility.evaluate(profile, opp) if opp else {}
-                data = elig
-                reply = elig.get("reasoning") or "Unable to evaluate eligibility."
-            else:
-                reply = "Select an opportunity first so I can explain eligibility."
-        elif "document" in lower and "missing" in lower:
-            tools_used.append("get_required_documents")
-            match = None
-            if opportunity_id:
-                match = (
-                    db.query(StudentOpportunityMatch)
-                    .filter(
-                        StudentOpportunityMatch.student_id == user.id,
-                        StudentOpportunityMatch.opportunity_id == opportunity_id,
-                    )
-                    .first()
-                )
-            else:
-                match = (
-                    db.query(StudentOpportunityMatch)
-                    .filter(StudentOpportunityMatch.student_id == user.id)
-                    .order_by(StudentOpportunityMatch.ranking_score.desc())
-                    .first()
-                )
-            missing = match.missing_requirements if match else []
-            data = {"missing": missing}
-            reply = "Missing requirements:\n" + ("\n".join(f"- {m}" for m in missing) or "None detected.")
-        elif "deadline" in lower:
-            tools_used.append("check_deadlines")
-            result = self.deadline.run(db, user.id)
-            data = result
-            reply = f"Checked deadlines. Created {result['notifications_created']} reminder(s)."
-        elif "apply" in lower and "first" in lower:
-            tools_used.append("rank_opportunities")
-            top = (
-                db.query(StudentOpportunityMatch)
-                .filter(StudentOpportunityMatch.student_id == user.id)
-                .order_by(StudentOpportunityMatch.ranking_score.desc())
-                .first()
-            )
-            if top:
-                opp = db.query(Opportunity).filter(Opportunity.id == top.opportunity_id).first()
-                data = {"match": top.ranking_score, "opportunity_id": top.opportunity_id}
-                reply = (
-                    f"Start with {opp.title if opp else 'your top match'} "
-                    f"(match {top.ranking_score}%, readiness {top.application_readiness_score}%). "
-                    "This is a match score, not an acceptance probability."
-                )
-            else:
-                reply = "No ranked matches yet. Run discovery first."
-        elif "sop" in lower:
-            tools_used.append("analyze_sop")
-            reply = "Open the SOP analyzer with your draft text for structured feedback. I will not fabricate biography."
-        elif "resume" in lower:
-            tools_used.append("analyze_resume")
-            reply = "Upload or paste your resume in the analyzer. Feedback is advisory and never invents experience."
-        elif "career" in lower or "researcher" in lower or "roadmap" in lower:
-            tools_used.append("search_career_opportunities")
-            if profile:
-                data = self.career.generate(db, profile)
-                reply = data["summary"]
-            else:
-                reply = "Complete your profile so I can generate a career roadmap."
-        elif "status" in lower:
-            tools_used.append("get_application_status")
-            reply = "Open Applications to view status timelines. Status changes that matter require your confirmation."
-            requires_confirmation = False
-        else:
-            tools_used.append("get_student_profile")
-            hint = llm_service.complete(
-                prompt=f"Student asked: {message}. Reply briefly as EduPath agent.",
-                system="You are EduPath AI. Be concise. Never invent scholarship facts.",
-            )
-            reply = hint
-
-        return {
-            "reply": reply,
-            "tools_used": tools_used,
-            "requires_confirmation": requires_confirmation,
-            "confirmation_prompt": confirmation_prompt,
-            "data": data,
-        }
+        return PolicyAgent().run(db, user, message, opportunity_id=opportunity_id)

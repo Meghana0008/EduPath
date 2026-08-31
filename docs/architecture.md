@@ -2,18 +2,18 @@
 
 ## Overview
 
-EduPath AI is a monorepo MVP that continuously discovers educational opportunities for students and ranks them against a student profile. The student does not search — the agent searches for the student.
+EduPath AI is a monorepo MVP that discovers educational opportunities for students and ranks them against a student profile. Chat uses an **LLM policy loop over MCP tools** (decide → act → observe → reflect → finish). A separate LangGraph workflow still runs batch discovery for scheduled scans.
 
 ```text
 Frontend (Next.js)
         ↓
 FastAPI API layer
         ↓
-LangGraph Orchestrator
+PolicyAgent (LLM action policy)
         ↓
-Specialized Agents
+MCP client  ⇄  EduPath MCP tool server
         ↓
-Tools (search, fetch, rules, storage)
+Deterministic agents (eligibility, ranking, discovery, …)
         ↓
 PostgreSQL / SQLite
         ↓
@@ -34,31 +34,30 @@ APScheduler (daily discovery + deadlines)
 - Authentication and authorization
 - Profile, opportunities, matches, applications, documents
 - Agent triggers (`POST /api/agent/discover`)
-- Chat endpoint that routes into the same orchestrator tools
+- Chat endpoint → `PolicyAgent` MCP tool loop
 - Resume/SOP analyzers
 - Notification and calendar endpoints
 
-### Orchestrator
+### Agent policy loop (L2)
 
-The orchestrator coordinates specialized agents. It uses LangGraph when available and falls back to a sequential pipeline.
+`OrchestratorAgent.chat()` delegates to `PolicyAgent`:
 
-Workflow:
+1. **Discover tools** — MCP `list_tools()` on `edupath-scholarship-mcp`
+2. **Decide** — LLM returns structured JSON: `call_tool` or `finish`
+3. **Act / observe** — MCP `call_tool`; unknown tools and invalid args return recoverable errors
+4. **Loop** — up to 6 iterations with error recovery
+5. **Reflect** — `ReflectionAgent` checks draft claims against tool observations and revises if needed
 
-1. Load student profile
-2. Load trusted sources
-3. Discovery
-4. Extraction
-5. Deduplicate
-6. Eligibility
-7. Ranking
-8. Application readiness
-9. Save matches
-10. Notify (conditional / deadline checks)
+Offline: when `LLM_API_KEY` is unset, the LLM mock still emits structured policy JSON so the same loop runs without a live provider.
+
+Batch discovery remains a LangGraph/sequential pipeline (`load_sources → discovery → evaluate → notify`) and is exposed as the MCP tool `search_opportunities` — a guardrailed workflow tool, not the chat policy itself.
 
 ### Specialized Agents
 
 | Agent | Why it exists |
 | --- | --- |
+| PolicyAgent | LLM-mediated decide/act/observe/finish over MCP tools |
+| ReflectionAgent | Verify final answer against tool observations |
 | DiscoveryAgent | Find candidate opportunities from trusted sources / demo catalog |
 | ExtractionAgent | Convert page/seed content into strict structured opportunity JSON |
 | EligibilityAgent | Deterministic rules first, LLM only for ambiguous explanation |
@@ -68,13 +67,28 @@ Workflow:
 | DeadlineAgent | Daily reminders with dedupe keys |
 | ApplicationStatusAgent | Valid status transitions + human confirmation gates |
 | CareerRecommendationAgent | Multi-year roadmap linked to real matches |
-| OrchestratorAgent | Coordinates agents and chat tool routing |
+| OrchestratorAgent | Batch discovery workflow + chat entrypoint to PolicyAgent |
 
-### Tools
+### MCP tool boundary
 
-- `search_web`, `fetch_page`, `extract_links`, `check_duplicate`, `save_opportunity`
-- Robots.txt respect and rate limiting for live fetches
-- Demo catalog used when `DEMO_MODE=true`
+Protocol: `app/mcp/protocol.py` (`MCPToolServer`, `InProcessMCPClient`) — `list_tools` / `call_tool` with JSON Schema inputs.
+
+Registered tools (`app/mcp/tool_server.py`):
+
+- `get_student_profile`
+- `search_opportunities` (side effect: runs discovery workflow)
+- `list_matches`
+- `check_eligibility`
+- `get_required_documents`
+- `check_deadlines`
+- `get_application_status`
+- `rank_top_opportunity`
+- `search_career_opportunities`
+- `evaluate_and_rank`
+
+Optional FastMCP/stdio export: `python -m app.mcp.fastmcp_server` (uses `mcp` package when installed; otherwise a JSON stdio bridge).
+
+Low-level discovery helpers (`search_web`, `fetch_page`, …) remain internal to DiscoveryAgent and are not the L2 tool surface.
 
 ### Data
 
@@ -94,5 +108,6 @@ APScheduler runs:
 - Never invent scholarship amounts, deadlines, or official URLs
 - Retain `source_url`, `application_url`, `source_verified`, `last_verified_at`
 - Mark unverified data as Unknown
-- Mock LLM mode when `LLM_API_KEY` is absent
+- Mock LLM mode when `LLM_API_KEY` is absent (policy loop still runs)
 - Human confirmation before status commits / deletes / application creation
+- Reflection pass strips ungrounded URLs / unsafe claims from chat replies

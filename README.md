@@ -27,33 +27,36 @@ Frontend (Next.js)
     ↓
 FastAPI
     ↓
-LangGraph Orchestrator
+PolicyAgent (LLM decide → MCP tools → observe → reflect → finish)
     ↓
-Specialized Agents + Tools
+MCP tool server + specialized deterministic agents
     ↓
 PostgreSQL / SQLite + APScheduler
 ```
 
 See [docs/architecture.md](docs/architecture.md) and [docs/agent-workflows.md](docs/agent-workflows.md).
+Offline L2 transcript: [docs/l2-agent-trace.md](docs/l2-agent-trace.md).
 
 ## Agent Architecture
 
-Specialized agents (not one giant LLM call):
+Specialized agents + MCP tool boundary (not one giant LLM call):
 
-- Orchestrator
-- Discovery
-- Extraction
-- Eligibility (rules + LLM)
-- Ranking
-- Application Readiness
+- **PolicyAgent** — LLM action policy over discovered MCP tools
+- **ReflectionAgent** — verifies final answer against tool observations
+- Orchestrator (batch discovery workflow; chat entrypoint)
+- Discovery / Extraction
+- Eligibility (rules + LLM explanations)
+- Ranking / Application Readiness
 - Document / Resume / SOP
 - Deadline / Notification
 - Application Status
 - Career Recommendation
 
+MCP tools (runtime `list_tools` / `call_tool`): `get_student_profile`, `search_opportunities`, `list_matches`, `check_eligibility`, `get_required_documents`, `check_deadlines`, `get_application_status`, `rank_top_opportunity`, `search_career_opportunities`, `evaluate_and_rank`.
+
 ## Features
 
-- Autonomous opportunity discovery workflow
+- Batch opportunity discovery workflow (LangGraph; exposed as MCP tool)
 - Eligibility match scoring (not acceptance probability)
 - Application readiness + document vault
 - Resume & SOP analyzers
@@ -63,6 +66,7 @@ Specialized agents (not one giant LLM call):
 - Agent Activity trace for demos
 - Chat assistant that uses the same tools/agents
 - DEMO MODE with seeded student + opportunities
+- **L2 agent loop:** MCP tool discovery + LLM decide/act/observe/finish + reflection
 
 ## Tech Stack
 
@@ -70,7 +74,8 @@ Specialized agents (not one giant LLM call):
 | --- | --- |
 | Frontend | Next.js, TypeScript, Tailwind, Lucide, Recharts |
 | Backend | Python, FastAPI, Pydantic, SQLAlchemy |
-| Agents | LangGraph + LangChain-core patterns |
+| Agents | LangGraph workflows + LLM PolicyAgent over MCP tools |
+| MCP | In-process MCPToolServer (+ optional FastMCP/stdio) |
 | DB | PostgreSQL (Docker) or SQLite (local demo) |
 | Jobs | APScheduler |
 
@@ -194,10 +199,20 @@ STUDENT PROFILE
 
 ```bash
 cd backend
+python -m venv .venv
+# Windows: .venv\Scripts\activate
+pip install -r requirements.txt
 pytest -q
 ```
 
-Coverage includes eligibility rules, ranking urgency, readiness docs, and confirmation-gated status changes.
+L2 MCP + policy loop (offline):
+
+```bash
+pytest tests/test_mcp_policy_loop.py -q
+python scripts/smoke_l2_agent.py
+```
+
+Coverage includes eligibility rules, ranking urgency, readiness docs, confirmation-gated status changes, MCP tool discovery/invocation, decide-act-observe-finish policy loop, and reflection revision.
 
 ## Docker (full stack)
 

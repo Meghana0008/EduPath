@@ -1,27 +1,46 @@
 from app.database import SessionLocal, Base, engine
-from app.models import AuthLoginCode, User
+from app.models import (
+    AgentRun,
+    Application,
+    AuthLoginCode,
+    Notification,
+    StudentOpportunityMatch,
+    StudentProfile,
+    User,
+)
+from app.services import auth_email
 from app.services.auth_email import request_login_code, verify_login_code
 from app.config import get_settings
 
 
+def _purge_user(db, email: str) -> None:
+    existing = db.query(User).filter(User.email == email).first()
+    if not existing:
+        db.query(AuthLoginCode).filter(AuthLoginCode.email == email).delete()
+        db.commit()
+        return
+    uid = existing.id
+    db.query(AuthLoginCode).filter(AuthLoginCode.email == email).delete()
+    db.query(Notification).filter(Notification.student_id == uid).delete()
+    db.query(Application).filter(Application.student_id == uid).delete()
+    db.query(StudentOpportunityMatch).filter(StudentOpportunityMatch.student_id == uid).delete()
+    db.query(AgentRun).filter(AgentRun.student_id == uid).delete()
+    db.query(StudentProfile).filter(StudentProfile.user_id == uid).delete()
+    db.delete(existing)
+    db.commit()
+
+
 def test_otp_signup_and_login_flow(monkeypatch):
-    # Allow local fallback code so the unit test does not need real SMTP
+    # Force offline/dev path: no live email delivery, return visible demo code.
     settings = get_settings()
     monkeypatch.setattr(settings, "demo_mode", True)
-    monkeypatch.setattr(settings, "smtp_host", "")
-    monkeypatch.setattr(settings, "smtp_username", "")
-    monkeypatch.setattr(settings, "smtp_password", "")
-    monkeypatch.setattr(settings, "resend_api_key", "")
+    monkeypatch.setattr(auth_email, "send_login_code_email", lambda *_a, **_k: False)
 
     Base.metadata.create_all(bind=engine)
     db = SessionLocal()
     try:
         email = "otp-test-user@gmail.com"
-        existing = db.query(User).filter(User.email == email).first()
-        if existing:
-            db.query(AuthLoginCode).filter(AuthLoginCode.email == email).delete()
-            db.delete(existing)
-            db.commit()
+        _purge_user(db, email)
 
         first = request_login_code(db, email)
         assert first.get("needs_name") is True
@@ -53,10 +72,7 @@ def test_otp_signup_and_login_flow(monkeypatch):
 def test_production_requires_email_delivery(monkeypatch):
     settings = get_settings()
     monkeypatch.setattr(settings, "demo_mode", False)
-    monkeypatch.setattr(settings, "smtp_host", "")
-    monkeypatch.setattr(settings, "smtp_username", "")
-    monkeypatch.setattr(settings, "smtp_password", "")
-    monkeypatch.setattr(settings, "resend_api_key", "")
+    monkeypatch.setattr(auth_email, "send_login_code_email", lambda *_a, **_k: False)
 
     Base.metadata.create_all(bind=engine)
     db = SessionLocal()

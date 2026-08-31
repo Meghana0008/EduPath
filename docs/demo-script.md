@@ -61,11 +61,17 @@ Generate an SOP draft and point out the **AI-GENERATED — REVIEW** mark.
 
 Open `/calendar` and highlight upcoming deadlines.
 
-## Scene 8 — Simulated Autonomous Scan
+## Scene 8 — Simulated Discovery Scan
 
 On Agent Activity or Dashboard, run discovery with **simulate new opportunity**.
 
 Show a newly discovered fellowship appear.
+
+Also open Agent Activity after a chat question (e.g. “Which opportunity should I apply to first?”) and point out:
+
+- MCP `list_tools`
+- Policy decide / call_tool / observe steps
+- Reflection pass
 
 ## Scene 9 — Notification
 

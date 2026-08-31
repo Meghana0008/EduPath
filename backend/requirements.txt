@@ -19,3 +19,7 @@ pytest-asyncio==0.25.0
 email-validator==2.2.0
 aiosqlite==0.20.0
 greenlet==3.1.1
+python-dotenv==1.0.1
+# Optional: enables `python -m app.mcp.fastmcp_server` FastMCP transport.
+# Core L2 path uses in-process MCPToolServer without this package.
+mcp>=1.1.0
